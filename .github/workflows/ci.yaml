@@ -33,13 +33,13 @@ jobs:
 
       - name: Update infra repo with new image tag
         run: |
-          git clone https://github.com/tommiteam/infra.git
+          git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/tommiteam/infra.git
           cd infra/cluster/apps/hello-world
 
           kustomize edit set image ghcr.io/tommiteam/hello-world=$GITHUB_SHA
 
           git config user.email "ci@github.com"
           git config user.name "GitHub Actions"
-          git commit -am "Update hello-world image to $GITHUB_SHA"
+          git commit -am "Update hello-world image to $GITHUB_SHA" || echo "No changes to commit"
 
-          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/tommiteam/infra.git HEAD:main
+          git push origin HEAD:main
