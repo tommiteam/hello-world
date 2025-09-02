@@ -31,26 +31,14 @@ jobs:
             ghcr.io/${{ github.repository }}:latest
             ghcr.io/${{ github.repository }}:${{ github.sha }}
 
-      - name: Update infra repo with new image tag
+      - name: Update manifests in infra
         run: |
-          echo "DEBUG: Updating infra with new image tag"
-          echo "DEBUG: Commit SHA = ${GITHUB_SHA}"
-          echo "DEBUG: Actor       = ${GITHUB_ACTOR}"
-
           git clone https://x-access-token:${{ secrets.INFRA_PAT }}@github.com/tommiteam/infra.git
           cd infra/cluster/apps/hello-world
 
-          echo "DEBUG: Running kustomize edit..."
-          kustomize edit set image ghcr.io/tommiteam/hello-world=${GITHUB_SHA}
+          kustomize edit set image ghcr.io/tommiteam/hello-world=ghcr.io/tommiteam/hello-world:${GITHUB_SHA}
 
           git config user.email "ci@github.com"
           git config user.name "GitHub Actions"
-
-          echo "DEBUG: Checking for changes..."
-          git status
-          git diff || true
-
-          git commit -am "Update hello-world image to ${GITHUB_SHA}" || echo "No changes to commit"
-          echo "DEBUG: Pushing to main branch"
+          git commit -am "Update hello-world image to ${GITHUB_SHA}" || echo "No changes"
           git push origin HEAD:main
-
