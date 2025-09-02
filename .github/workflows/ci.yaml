@@ -8,7 +8,7 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
 
     steps:
@@ -23,8 +23,22 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: ghcr.io/${{ github.repository }}:latest
+        run: |
+          IMAGE=ghcr.io/${{ github.repository }}
+          TAG=${GITHUB_SHA}
+
+          echo "Building $IMAGE:$TAG"
+          docker build -t $IMAGE:$TAG .
+          docker push $IMAGE:$TAG
+
+      - name: Update infra repo with new image tag
+        run: |
+          git clone https://github.com/tommiteam/infra.git
+          cd infra/cluster/apps/hello-world
+
+          kustomize edit set image ghcr.io/tommiteam/hello-world=$GITHUB_SHA
+
+          git config user.email "ci@github.com"
+          git config user.name "GitHub Actions"
+          git commit -am "Update hello-world image to $GITHUB_SHA"
+          git push
