@@ -53,3 +53,4 @@ jobs:
           git commit -am "Update hello-world image to ${GITHUB_SHA}" || echo "No changes to commit"
           echo "DEBUG: Pushing to main branch"
           git push origin HEAD:main
+
