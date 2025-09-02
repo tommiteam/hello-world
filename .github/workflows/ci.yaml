@@ -33,13 +33,23 @@ jobs:
 
       - name: Update infra repo with new image tag
         run: |
-          git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/tommiteam/infra.git
+          echo "DEBUG: Updating infra with new image tag"
+          echo "DEBUG: Commit SHA = ${GITHUB_SHA}"
+          echo "DEBUG: Actor       = ${GITHUB_ACTOR}"
+
+          git clone https://x-access-token:${{ secrets.INFRA_PAT }}@github.com/tommiteam/infra.git
           cd infra/cluster/apps/hello-world
 
+          echo "DEBUG: Running kustomize edit..."
           kustomize edit set image ghcr.io/tommiteam/hello-world=${GITHUB_SHA}
 
           git config user.email "ci@github.com"
           git config user.name "GitHub Actions"
-          git commit -am "Update hello-world image to ${GITHUB_SHA}" || echo "No changes to commit"
 
+          echo "DEBUG: Checking for changes..."
+          git status
+          git diff || true
+
+          git commit -am "Update hello-world image to ${GITHUB_SHA}" || echo "No changes to commit"
+          echo "DEBUG: Pushing to main branch"
           git push origin HEAD:main
