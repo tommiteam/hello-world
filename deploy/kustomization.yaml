@@ -2,10 +2,10 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: hello-world
 resources:
-  - deployment.yaml
-  - service.yaml
-  - ingress.yaml
+- deployment.yaml
+- service.yaml
+- ingress.yaml
 
 images:
-  - name: ghcr.io/tommiteam/hello-world
-    newTag: latest
+- name: ghcr.io/tommiteam/hello-world
+  newName: 16ad222882ed2b0a3b71dc59c6597f7a4f55bc72
