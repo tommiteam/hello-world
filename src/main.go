@@ -12,7 +12,7 @@ import (
 )
 
 func main() {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	addrs := []string{
@@ -24,10 +24,10 @@ func main() {
 	printResolved(addrs)
 
 	rdb := redis.NewClusterClient(&redis.ClusterOptions{
-		Addrs: addrs,
-		// Username: "default", // if ACL enabled (Redis 6+)
-		// Password: "secret",  // if required
-		// TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12}, // if using TLS
+		Addrs:        addrs,
+		DialTimeout:  10 * time.Second,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 5 * time.Second,
 	})
 	defer func() { _ = rdb.Close() }()
 
