@@ -17,6 +17,9 @@ func main() {
 
 	addrs := []string{
 		"redis-01.jg88.sat:7000",
+		"redis-01.jg88.sat:7001",
+		"redis-01.jg88.sat:7002",
+		"redis-01.jg88.sat:7003",
 	}
 	printResolved(addrs)
 
