@@ -35,21 +35,40 @@ func main() {
 	})
 	defer func() { _ = rdb.Close() }()
 
+	// Fail fast on boot (fine for now)
 	if err := rdb.Ping(ctx).Err(); err != nil {
 		log.Fatalf("failed to connect to cluster: %v", err)
 	}
 	log.Println("✅ connected to redis cluster")
 
 	m := metrics.New()
+	m.SetRedisUp(true)
+
+	// Background redis health + ping duration
+	go func() {
+		t := time.NewTicker(10 * time.Second)
+		defer t.Stop()
+
+		for range t.C {
+			start := time.Now()
+			c, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			err := rdb.Ping(c).Err()
+			cancel()
+
+			m.ObserveRedisPing(time.Since(start).Seconds())
+			m.SetRedisUp(err == nil)
+		}
+	}()
 
 	mux := http.NewServeMux()
 
+	// Business endpoint (instrumented)
 	mux.Handle("/", m.Middleware("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "Hello!")
 	})))
 
-	// Optional but recommended (k8s probes + dashboards)
-	mux.Handle("/healthz", m.Middleware("/healthz", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// Readiness: dependency check (NOT instrumented)
+	mux.Handle("/healthz", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
 		if err := rdb.Ping(c).Err(); err != nil {
@@ -58,9 +77,16 @@ func main() {
 		}
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintln(w, "ok")
-	})))
+	}))
 
-	mux.Handle("/metrics", m.Middleware("/metrics", m.MetricsHandler()))
+	// Liveness: process is up (NOT instrumented)
+	mux.Handle("/livez", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintln(w, "ok")
+	}))
+
+	// Metrics endpoint (NOT instrumented)
+	mux.Handle("/metrics", m.MetricsHandler())
 
 	srv := &http.Server{
 		Addr:              ":8080",

@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/felixge/httpsnoop"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -13,9 +14,11 @@ import (
 type Metrics struct {
 	Registry *prometheus.Registry
 
-	inFlight prometheus.Gauge
-	reqTotal *prometheus.CounterVec
-	reqDur   *prometheus.HistogramVec
+	inFlight     prometheus.Gauge
+	reqTotal     *prometheus.CounterVec
+	reqDur       *prometheus.HistogramVec
+	redisUp      prometheus.Gauge
+	redisPingDur prometheus.Histogram
 }
 
 func New() *Metrics {
@@ -23,10 +26,12 @@ func New() *Metrics {
 
 	m := &Metrics{
 		Registry: reg,
+
 		inFlight: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "hello_http_in_flight_requests",
 			Help: "In-flight HTTP requests.",
 		}),
+
 		reqTotal: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "hello_http_requests_total",
@@ -34,6 +39,7 @@ func New() *Metrics {
 			},
 			[]string{"route", "method", "code"},
 		),
+
 		reqDur: prometheus.NewHistogramVec(
 			prometheus.HistogramOpts{
 				Name:    "hello_http_request_duration_seconds",
@@ -42,49 +48,59 @@ func New() *Metrics {
 			},
 			[]string{"route", "method"},
 		),
+
+		redisUp: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "hello_redis_up",
+			Help: "Redis reachable (1=up, 0=down).",
+		}),
+
+		redisPingDur: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:    "hello_redis_ping_duration_seconds",
+			Help:    "Redis ping latency in seconds.",
+			Buckets: prometheus.DefBuckets,
+		}),
 	}
 
-	// Useful default collectors (Go + process)
 	reg.MustRegister(
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
+
 		m.inFlight,
 		m.reqTotal,
 		m.reqDur,
+		m.redisUp,
+		m.redisPingDur,
 	)
 
 	return m
 }
 
-// MetricsHandler returns a /metrics handler bound to this app registry (no global default registry).
 func (m *Metrics) MetricsHandler() http.Handler {
 	return promhttp.HandlerFor(m.Registry, promhttp.HandlerOpts{})
 }
 
-// Middleware instruments handlers.
-// route should be a stable string like "/", "/healthz".
+func (m *Metrics) SetRedisUp(up bool) {
+	if up {
+		m.redisUp.Set(1)
+		return
+	}
+	m.redisUp.Set(0)
+}
+
+func (m *Metrics) ObserveRedisPing(seconds float64) {
+	m.redisPingDur.Observe(seconds)
+}
+
 func (m *Metrics) Middleware(route string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		m.inFlight.Inc()
 		defer m.inFlight.Dec()
 
 		start := time.Now()
-		srw := &statusRecordingWriter{ResponseWriter: w, status: 200}
+		cm := httpsnoop.CaptureMetrics(next, w, r)
 
-		next.ServeHTTP(srw, r)
-
-		code := strconv.Itoa(srw.status)
+		code := strconv.Itoa(cm.Code)
 		m.reqTotal.WithLabelValues(route, r.Method, code).Inc()
 		m.reqDur.WithLabelValues(route, r.Method).Observe(time.Since(start).Seconds())
 	})
-}
-
-type statusRecordingWriter struct {
-	http.ResponseWriter
-	status int
-}
-
-func (w *statusRecordingWriter) WriteHeader(code int) {
-	w.status = code
-	w.ResponseWriter.WriteHeader(code)
 }
