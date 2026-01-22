@@ -4,7 +4,6 @@ WORKDIR /app
 
 # Copy source code
 COPY src/ ./src
-COPY internal/ ./internal
 
 # Build
 RUN cd src && go mod init hello && go mod tidy && go build -o /hello-app

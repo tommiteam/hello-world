@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"helloapp/src/internal/metrics"
 	"log"
 	"net"
 	"net/http"
@@ -10,8 +11,6 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-
-	"helloapp/internal/metrics"
 )
 
 const publicHost = "redis-01.jg88.sat"
