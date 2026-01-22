@@ -85,6 +85,10 @@ func main() {
 		fmt.Fprintln(w, "ok")
 	}))
 
+	mux.Handle("/boom", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+
 	// Metrics endpoint (NOT instrumented)
 	mux.Handle("/metrics", m.MetricsHandler())
 
