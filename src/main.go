@@ -9,40 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
+
+	"helloapp/internal/metrics"
 )
 
 const publicHost = "redis-01.jg88.sat"
-
-var (
-	httpRequestsTotal = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "hello_http_requests_total",
-			Help: "Total number of HTTP requests.",
-		},
-		[]string{"path", "method", "code"},
-	)
-
-	httpRequestDuration = prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "hello_http_request_duration_seconds",
-			Help:    "HTTP request latency in seconds.",
-			Buckets: prometheus.DefBuckets,
-		},
-		[]string{"path", "method"},
-	)
-
-	redisUp = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "hello_redis_up",
-		Help: "Whether Redis cluster is reachable (1 = up, 0 = down).",
-	})
-)
-
-func init() {
-	prometheus.MustRegister(httpRequestsTotal, httpRequestDuration, redisUp)
-}
 
 func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -63,45 +35,32 @@ func main() {
 	})
 	defer func() { _ = rdb.Close() }()
 
-	// Initial ping (fail fast)
 	if err := rdb.Ping(ctx).Err(); err != nil {
 		log.Fatalf("failed to connect to cluster: %v", err)
 	}
 	log.Println("✅ connected to redis cluster")
-	redisUp.Set(1)
 
-	// Background health check
-	go func() {
-		t := time.NewTicker(10 * time.Second)
-		defer t.Stop()
-		for range t.C {
-			c, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-			err := rdb.Ping(c).Err()
-			cancel()
-			if err != nil {
-				redisUp.Set(0)
-				continue
-			}
-			redisUp.Set(1)
-		}
-	}()
+	m := metrics.New()
 
 	mux := http.NewServeMux()
 
-	// Your existing endpoint, with simple instrumentation
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		code := 200
-		defer func() {
-			httpRequestsTotal.WithLabelValues("/", r.Method, fmt.Sprint(code)).Inc()
-			httpRequestDuration.WithLabelValues("/", r.Method).Observe(time.Since(start).Seconds())
-		}()
-
+	mux.Handle("/", m.Middleware("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "Hello!")
-	})
+	})))
 
-	// Prometheus metrics endpoint
-	mux.Handle("/metrics", promhttp.Handler())
+	// Optional but recommended (k8s probes + dashboards)
+	mux.Handle("/healthz", m.Middleware("/healthz", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		if err := rdb.Ping(c).Err(); err != nil {
+			http.Error(w, "redis down", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintln(w, "ok")
+	})))
+
+	mux.Handle("/metrics", m.Middleware("/metrics", m.MetricsHandler()))
 
 	srv := &http.Server{
 		Addr:              ":8080",
