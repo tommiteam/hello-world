@@ -71,7 +71,7 @@ func Load(paths ...string) Config {
 	v.SetDefault("server.logging_level", "INFO")
 	v.SetDefault("server.shutdown_timeout", "15s")
 
-	v.SetDefault("cache.redis_addrs", []string{"redis-gateway.redis.svc.cluster.local:6379"})
+	v.SetDefault("cache.redis_addrs", []string{"localhost:6380"})
 	v.SetDefault("cache.redis_password", "")
 	v.SetDefault("cache.redis_timeout", "5s")
 

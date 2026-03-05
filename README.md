@@ -27,6 +27,9 @@ A clean, production-ready Go HTTP service skeleton deployed to a k3s homelab clu
 
 Configuration is loaded from `config.yaml` (via [Viper](https://github.com/spf13/viper)) and can be overridden by environment variables.
 
+> **`config.yaml` is gitignored** — it contains secrets (Redis password, etc.).
+> In Kubernetes, it's mounted from a SealedSecret. For local dev, create your own copy.
+
 ### config.yaml
 
 ```yaml
@@ -69,8 +72,20 @@ Priority: **env vars > config.yaml > built-in defaults**
 ### Without Redis
 
 ```bash
+# Create a local config.yaml (gitignored)
+cat > config.yaml <<EOF
+server:
+  service_name: hello-world
+  port: 8080
+  logging_level: DEBUG
+cache:
+  redis_addrs:
+    - localhost:6379
+  redis_password: ""
+  redis_timeout: 5s
+EOF
+
 go run ./cmd/helloapp
-# Server starts on :8080 (reads config.yaml from current directory)
 # /livez returns 200, /healthz returns 503 (no redis)
 ```
 
@@ -80,11 +95,8 @@ go run ./cmd/helloapp
 # Start a local Redis
 docker run -d -p 6379:6379 redis:7
 
-# Option A: edit config.yaml
-#   cache.redis_addrs: ["localhost:6379"]
-
-# Option B: env override
-CACHE_REDIS_ADDRS=localhost:6379 go run ./cmd/helloapp
+# Run (config.yaml already points to localhost:6379)
+go run ./cmd/helloapp
 ```
 
 ## Build
@@ -99,7 +111,8 @@ go build -o hello-app ./cmd/helloapp
 
 ```bash
 docker build -t hello-world .
-docker run -p 8080:8080 -e CACHE_REDIS_ADDRS=host.docker.internal:6379 hello-world
+# Mount your local config.yaml into the container
+docker run -p 8080:8080 -v $(pwd)/config.yaml:/app/config.yaml hello-world
 ```
 
 ## Test
@@ -127,7 +140,7 @@ hello-world/
 │   └── server/
 │       ├── server.go           # HTTP server, routes, middleware
 │       └── server_test.go
-├── config.yaml                 # Default configuration (baked into Docker image)
+├── config.yaml                 # Local dev only (gitignored — mounted via K8s Secret in prod)
 ├── docs/
 │   ├── ARCHITECTURE.md         # Package map + key flows
 │   ├── OPERABILITY.md          # Logging, metrics, tracing, probes
@@ -144,12 +157,21 @@ The `src/` directory contains the original monolithic code. It is superseded by 
 ## Deployment
 
 This service is deployed to k3s via Argo CD. The infra repo at `cluster/apps/hello-world/` contains:
-- `deployment.yaml` — Kubernetes Deployment with health probes
+- `deployment.yaml` — Kubernetes Deployment with health probes + config volume mount
 - `service.yaml` — ClusterIP Service
 - `ingress.yaml` — Ingress at `hello-world.tommitoan.space`
 - `servicemonitor.yaml` — Prometheus scraping
 - `prometheusrule.yaml` — Alerts (5xx rate, P95 latency, Redis down)
+- `secret.sealed.yaml` — Sealed config.yaml (contains Redis password etc.)
 - `kustomization.yaml` — Image tag managed by CI
+
+### How config.yaml reaches the pod
+
+1. `secret.yaml` (plaintext, **never committed**) contains `config.yaml` as `stringData`
+2. Seal it: `make secret-hello-world`
+3. Commit `secret.sealed.yaml` → Argo CD syncs it as a K8s Secret
+4. Deployment mounts the Secret at `/app/config.yaml` via `volumeMounts`
+5. Viper reads it from the working directory (`/app`)
 
 CI pushes a new image tag → patches `kustomization.yaml` → Argo CD syncs automatically.
 

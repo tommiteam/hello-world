@@ -109,23 +109,22 @@ The readiness check uses a **cached** Redis health status updated by a backgroun
 
 ## Configuration
 
-Configuration is loaded by [Viper](https://github.com/spf13/viper) from `config.yaml` (baked into the Docker image at `/config.yaml`) and can be overridden per-key by environment variables.
+Configuration is loaded by [Viper](https://github.com/spf13/viper) from `config.yaml` (mounted at `/app/config.yaml` via a Kubernetes Secret) and can be overridden per-key by environment variables.
 
 See [README.md](../README.md#configuration) for the full config reference.
 
-Key operational overrides (set via env or by editing `config.yaml`):
+Key operational overrides (set via env or by editing the Secret's `config.yaml`):
 - `SERVER_LOGGING_LEVEL=DEBUG` — enable verbose logging for troubleshooting
 - `SERVER_SHUTDOWN_TIMEOUT=30s` — increase if long-lived connections exist
 - `CACHE_REDIS_TIMEOUT=10s` — increase if Redis is slow
 
-In Kubernetes, override specific values via Deployment env vars:
-```yaml
-env:
-  - name: CACHE_REDIS_PASSWORD
-    valueFrom:
-      secretKeyRef:
-        name: redis-secret
-        key: password
+In Kubernetes, the config.yaml is delivered via a SealedSecret:
+```
+infra/cluster/apps/hello-world/secret.yaml      ← plaintext (never committed)
+    → make secret-hello-world
+infra/cluster/apps/hello-world/secret.sealed.yaml ← committed, synced by Argo CD
+    → K8s Secret "hello-world-config"
+    → mounted at /app/config.yaml in the pod
 ```
 
 ## Deployment Expectations

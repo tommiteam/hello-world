@@ -22,7 +22,7 @@ Use the `hello-world` project as a template to create a new Go HTTP service. Thi
 │   └── server/
 │       ├── server.go           # HTTP server, routes, all middleware
 │       └── server_test.go
-├── config.yaml                 # Default config (baked into Docker image)
+├── config.yaml                 # Local dev only (gitignored — mounted via K8s Secret in prod)
 ├── docs/
 │   ├── ARCHITECTURE.md
 │   └── OPERABILITY.md
@@ -340,12 +340,14 @@ COPY internal/ internal/
 RUN CGO_ENABLED=0 GOOS=linux go build -o /app-binary ./cmd/<service-name>
 
 FROM gcr.io/distroless/base-debian12
-WORKDIR /
+WORKDIR /app
 COPY --from=builder /app-binary /app-binary
-COPY config.yaml /config.yaml
 EXPOSE 8080
 ENTRYPOINT ["/app-binary"]
 ```
+
+> **Do NOT copy config.yaml into the image.** It contains secrets.
+> In Kubernetes, config.yaml is mounted via a SealedSecret volume (see step 10).
 
 ### 10. Kubernetes manifests
 

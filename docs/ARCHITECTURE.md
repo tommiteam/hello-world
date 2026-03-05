@@ -98,8 +98,8 @@ Alertmanager → notifications
 ### ADR-001: Viper Config (YAML file + env override)
 
 **Context**: Service needs consistent configuration between local dev and Kubernetes, matching the pattern used by other services (trala).
-**Decision**: Use `spf13/viper` to load `config.yaml` with `AutomaticEnv()` override. Structured config with `mapstructure` tags. Env vars use flattened key paths (`SERVER_PORT`, `CACHE_REDIS_PASSWORD`).
-**Consequence**: Local dev uses `config.yaml` checked into the repo. Kubernetes overrides specific values via env vars or a mounted Secret. Consistent with trala's `internal/cfg/cfg.go` pattern.
+**Decision**: Use `spf13/viper` to load `config.yaml` with `AutomaticEnv()` override. Structured config with `mapstructure` tags. `config.yaml` is gitignored (it contains secrets). In Kubernetes, it's delivered via a SealedSecret mounted as a volume at `/app/config.yaml`. For local dev, create your own copy.
+**Consequence**: No secrets in the Docker image or git. Same config shape in all environments. Consistent with trala's `internal/cfg/cfg.go` + `cluster/apps/trala/secret.yaml` pattern.
 
 ### ADR-002: Custom Prometheus Registry
 
