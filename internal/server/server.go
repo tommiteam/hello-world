@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"time"
 
+	auditclient "helloapp/internal/audit"
 	"helloapp/internal/metrics"
 	redisclient "helloapp/internal/redis"
 )
@@ -19,13 +20,15 @@ type Server struct {
 	httpSrv *http.Server
 	metrics *metrics.Metrics
 	redis   *redisclient.Client
+	audit   *auditclient.Client
 }
 
 // New creates a new Server with all routes wired.
-func New(addr string, m *metrics.Metrics, rc *redisclient.Client) *Server {
+func New(addr string, m *metrics.Metrics, rc *redisclient.Client, ac *auditclient.Client) *Server {
 	s := &Server{
 		metrics: m,
 		redis:   rc,
+		audit:   ac,
 	}
 
 	mux := http.NewServeMux()
@@ -71,7 +74,18 @@ func (s *Server) Shutdown(ctx context.Context) error {
 // -------- handlers --------
 
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
-	slog.Info("hello handler hit", "request_id", requestIDFromCtx(r.Context()))
+	rid := requestIDFromCtx(r.Context())
+	slog.Info("hello handler hit", "request_id", rid)
+
+	// Log audit event for GET / requests
+	if s.audit != nil {
+		s.audit.LogEvent(r.Context(), "view", "homepage", "anonymous", map[string]string{
+			"request_id": rid,
+			"method":     r.Method,
+			"user_agent": r.UserAgent(),
+		})
+	}
+
 	fmt.Fprintln(w, "Hello!")
 }
 

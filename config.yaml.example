@@ -1,0 +1,20 @@
+# Example config for hello-world service
+# Copy this to config.yaml and edit as needed
+
+server:
+  service_name: hello-world
+  port: 8080
+  logging_level: INFO
+  shutdown_timeout: 15s
+
+cache:
+  enabled: true               # Set to false to run without Redis
+  redis_addrs:
+    - localhost:6379
+  redis_password: ""
+  redis_timeout: 5s
+
+audit:
+  enabled: true               # Set to false to run without audit logging
+  grpc_url: localhost:80      # Audit service gRPC endpoint
+

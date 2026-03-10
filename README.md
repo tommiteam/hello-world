@@ -6,7 +6,8 @@ A clean, production-ready Go HTTP service skeleton deployed to a k3s homelab clu
 
 - Structured JSON logging (`log/slog`)
 - Prometheus metrics (`/metrics`)
-- Redis connectivity with background health checker
+- **Redis connectivity (optional)** — can be disabled via config
+- **Audit logging (optional)** — sends events to audit service via gRPC
 - Graceful shutdown (SIGINT/SIGTERM)
 - Request-ID propagation (X-Request-Id header)
 - Health/readiness/liveness probes
@@ -40,10 +41,15 @@ server:
   shutdown_timeout: 15s
 
 cache:
+  enabled: true              # Set to false to disable Redis
   redis_addrs:
     - redis-gateway.redis.svc.cluster.local:6379
   redis_password: ""
   redis_timeout: 5s
+
+audit:
+  enabled: true              # Set to false to disable audit logging
+  grpc_url: audit.apps.svc.cluster.local:80
 ```
 
 ### Environment Variable Override
@@ -151,8 +157,13 @@ hello-world/
 ```
 
 ### Legacy (to be removed)
+## Documentation
 
-The `src/` directory contains the original monolithic code. It is superseded by `cmd/` + `internal/` and can be deleted once the migration is verified in production.
+- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** — Service architecture, request flow, data model
+- **[OPERABILITY.md](docs/OPERABILITY.md)** — Health checks, alerts, runbooks, logs
+- **[NEW_SERVICE_SKELETON_GUIDE.md](docs/NEW_SERVICE_SKELETON_GUIDE.md)** — Guide for creating new services from this skeleton
+- **[UPDATES.md](docs/UPDATES.md)** — Recent feature updates (optional Redis, Audit integration)
+- **[CLEANUP.md](docs/CLEANUP.md)** — Documentation of code cleanup and legacy code removal
 
 ## Deployment
 

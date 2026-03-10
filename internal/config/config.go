@@ -14,7 +14,10 @@ const (
 
 // Config is the root configuration, loaded from config.yaml and overridden by env vars.
 //
-// YAML structure:
+// config.yaml is gitignored — it contains secrets. In Kubernetes it is mounted
+// from a SealedSecret at /app/config.yaml. For local dev, create your own copy.
+//
+// YAML shape:
 //
 //	server:
 //	  service_name: hello-world
@@ -26,14 +29,19 @@ const (
 //	    - redis-gateway.redis.svc.cluster.local:6379
 //	  redis_password: ""
 //	  redis_timeout: 5s
+//	audit:
+//	  enabled: true
+//	  grpc_url: audit-service:50051
 //
-// Every key can be overridden by an environment variable using the
-// flattened, upper-cased path with "_" separators. For example:
+// Env-var override: flatten the YAML key path with "_", upper-case it.
 //
-//	SERVER_PORT=9090  SERVER_LOGGING_LEVEL=DEBUG  CACHE_REDIS_PASSWORD=secret
+//	SERVER_PORT=9090
+//	SERVER_LOGGING_LEVEL=DEBUG
+//	CACHE_REDIS_PASSWORD=secret
 type Config struct {
 	Server Server `mapstructure:"server"`
 	Cache  Cache  `mapstructure:"cache"`
+	Audit  Audit  `mapstructure:"audit"`
 }
 
 // Server holds HTTP server and general service settings.
@@ -46,47 +54,52 @@ type Server struct {
 
 // Cache holds Redis connection settings.
 type Cache struct {
+	Enabled       bool     `mapstructure:"enabled"` // If false, skip Redis connection
 	RedisAddrs    []string `mapstructure:"redis_addrs"`
 	RedisPassword string   `mapstructure:"redis_password"`
 	RedisTimeout  string   `mapstructure:"redis_timeout"` // e.g. "5s"
 }
 
-// Load reads config.yaml from the given paths (or ".") and applies env overrides.
-// It panics on fatal config errors (same convention as trala).
+// Audit holds audit service connection settings.
+type Audit struct {
+	Enabled bool   `mapstructure:"enabled"`  // If false, skip audit client
+	GRPCUrl string `mapstructure:"grpc_url"` // e.g. "audit.apps.svc.cluster.local:80"
+}
+
+// Load reads config.yaml from the given search paths (defaults to ".") and
+// applies env-var overrides. Missing config file is not an error — built-in
+// defaults are used instead (suitable for CI / unit tests).
+// Panics on malformed config file or unmarshal errors (same convention as trala).
 func Load(paths ...string) Config {
 	v := viper.New()
 	v.SetConfigName(confName)
 	v.SetConfigType(confType)
-
 	if len(paths) == 0 {
 		paths = []string{"."}
 	}
 	for _, p := range paths {
 		v.AddConfigPath(p)
 	}
-
-	// --- defaults (used when no config.yaml is present) ---
+	// Built-in defaults — used when no config.yaml is found (e.g. CI, unit tests).
 	v.SetDefault("server.service_name", "hello-world")
 	v.SetDefault("server.port", 8080)
 	v.SetDefault("server.logging_level", "INFO")
 	v.SetDefault("server.shutdown_timeout", "15s")
-
+	v.SetDefault("cache.enabled", true)
 	v.SetDefault("cache.redis_addrs", []string{"localhost:6380"})
 	v.SetDefault("cache.redis_password", "")
 	v.SetDefault("cache.redis_timeout", "5s")
-
-	// --- read file (optional — works without one) ---
+	v.SetDefault("audit.enabled", true)
+	v.SetDefault("audit.grpc_url", "audit-service:50051")
+	// Read file — tolerate "not found", panic on parse errors.
 	if err := v.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+		if _, notFound := err.(viper.ConfigFileNotFoundError); !notFound {
 			panic(fmt.Errorf("config: read error: %w", err))
 		}
-		// no file found → defaults + env only, which is fine
 	}
-
-	// --- env override (SERVER_PORT, CACHE_REDIS_PASSWORD, etc.) ---
+	// Env overrides: SERVER_PORT, CACHE_REDIS_PASSWORD, etc.
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
-
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		panic(fmt.Errorf("config: unmarshal error: %w", err))

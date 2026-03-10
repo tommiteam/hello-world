@@ -1,13 +1,15 @@
 package server
+
 import (
-"net/http"
-"net/http/httptest"
-"testing"
-"helloapp/internal/metrics"
+	"helloapp/internal/metrics"
+	"net/http"
+	"net/http/httptest"
+	"testing"
 )
+
 func TestHandleLivez(t *testing.T) {
 	m := metrics.New()
-	srv := New(":0", m, nil)
+	srv := New(":0", m, nil, nil)
 	req := httptest.NewRequest(http.MethodGet, "/livez", nil)
 	w := httptest.NewRecorder()
 	srv.handleLivez(w, req)
@@ -20,7 +22,7 @@ func TestHandleLivez(t *testing.T) {
 }
 func TestHandleHealthz_NoRedis(t *testing.T) {
 	m := metrics.New()
-	srv := New(":0", m, nil)
+	srv := New(":0", m, nil, nil)
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	w := httptest.NewRecorder()
 	srv.handleHealthz(w, req)
@@ -30,7 +32,7 @@ func TestHandleHealthz_NoRedis(t *testing.T) {
 }
 func TestHandleRoot(t *testing.T) {
 	m := metrics.New()
-	srv := New(":0", m, nil)
+	srv := New(":0", m, nil, nil)
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	w := httptest.NewRecorder()
 	srv.handleRoot(w, req)
@@ -43,7 +45,7 @@ func TestHandleRoot(t *testing.T) {
 }
 func TestHandleBoom(t *testing.T) {
 	m := metrics.New()
-	srv := New(":0", m, nil)
+	srv := New(":0", m, nil, nil)
 	req := httptest.NewRequest(http.MethodGet, "/boom", nil)
 	w := httptest.NewRecorder()
 	srv.handleBoom(w, req)
@@ -53,7 +55,7 @@ func TestHandleBoom(t *testing.T) {
 }
 func TestRequestIDMiddleware(t *testing.T) {
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-rid := requestIDFromCtx(r.Context())
+		rid := requestIDFromCtx(r.Context())
 		if rid == "" {
 			t.Error("expected request ID in context")
 		}
