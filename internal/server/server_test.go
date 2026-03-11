@@ -39,8 +39,8 @@ func TestHandleRoot(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("expected 200, got %d", w.Code)
 	}
-	if body := w.Body.String(); body != "Hello!\n" {
-		t.Errorf("expected 'Hello!\\n', got %q", body)
+	if body := w.Body.String(); body != "Hello from Tommi! [v1.0.0]\n" {
+		t.Errorf("expected 'Hello from Tommi! [v1.0.0]\\n', got %q", body)
 	}
 }
 func TestHandleBoom(t *testing.T) {
