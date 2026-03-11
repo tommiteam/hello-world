@@ -86,7 +86,7 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	fmt.Fprintln(w, "Hello!")
+	fmt.Fprintln(w, "Hello from Tommi! [v1.0.0]")
 }
 
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {

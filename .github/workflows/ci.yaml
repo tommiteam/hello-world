@@ -2,53 +2,82 @@ name: CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  IMAGE: ghcr.io/tommiteam/hello-world
 
 jobs:
-  build-and-push:
+  test:
+    name: Test
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      packages: write
-
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version-file: go.mod
+          cache: true
 
-      - name: Run tests
-        run: |
-          go vet ./...
-          go test ./...
+      - name: Vet
+        run: go vet ./...
 
-      - name: Log in to GitHub Container Registry
+      - name: Test
+        run: go test -race -coverprofile=coverage.out ./...
+
+  build-and-push:
+    name: Build & Push
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push Docker image
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}:latest
-            ghcr.io/${{ github.repository }}:${{ github.sha }}
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      - name: Update manifests in infra
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout infra repo
+        uses: actions/checkout@v4
+        with:
+          repository: tommiteam/infra
+          token: ${{ secrets.INFRA_PAT }}
+          path: infra
+
+      - name: Patch image tag in kustomization
         run: |
-          git clone https://x-access-token:${{ secrets.INFRA_PAT }}@github.com/tommiteam/infra.git
           cd infra/cluster/apps/hello-world
-
-          kustomize edit set image ghcr.io/tommiteam/hello-world=ghcr.io/tommiteam/hello-world:${GITHUB_SHA}
-
-          git config user.email "ci@github.com"
-          git config user.name "GitHub Actions"
-          git commit -am "Update hello-world image to ${GITHUB_SHA}" || echo "No changes"
-          git push origin HEAD:main
+          sed -i "s/newTag: .*/newTag: ${{ github.sha }}/" kustomization.yaml
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add kustomization.yaml
+          git commit -m "deploy: hello-world ${{ github.sha }}" || echo "No changes to commit"
+          git push
